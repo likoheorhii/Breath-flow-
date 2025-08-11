@@ -1,0 +1,25 @@
+{
+  "roles": {
+    "bg/page": {"value": "{colors.indigo}"},
+    "bg/surface": {"value": "{colors.surface}"},
+    "text/primary": {"value": "{colors.text}"},
+    "text/muted": {"value": "{colors.muted}"},
+    "cta/primary": {"value": "{colors.iris}"},
+    "accent/azure": {"value": "{colors.azure}"},
+    "border": {"value": "{colors.stroke}"}
+  },
+  "archetypes": {
+    "Невинный": "#B7FF8E",
+    "Исследователь": "#A7D2FF",
+    "Мудрец": "#5F7BF3",
+    "Герой": "#F4A1B2",
+    "Бунтарь": "#FF6B6B",
+    "Маг": "#35C2C1",
+    "Обыватель": "#C0B6FF",
+    "Любовник": "#EFB9F2",
+    "Шут": "#F7D6A1",
+    "Опекун": "#77D9D7",
+    "Творец": "#6E5AF0",
+    "Правитель": "#9E91FF"
+  }
+}
