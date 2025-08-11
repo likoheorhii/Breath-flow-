@@ -1,0 +1,7 @@
+{
+  "name": "ArcheDream Wireframes Builder",
+  "id": "archedream-wireframes",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"]
+}

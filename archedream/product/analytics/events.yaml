@@ -1,0 +1,22 @@
+version: 1
+namespace: archedream
+
+events:
+  - name: dream_created
+    props: [has_audio, mood, length_chars]
+    pii: none
+  - name: insight_generated
+    props: [depth_mode, archetypes_count]
+    pii: none
+  - name: practice_completed
+    props: [practice_type, duration_min]
+    pii: none
+  - name: incubation_started
+    props: [evening]
+    pii: none
+  - name: circle_post_created
+    props: [anonymous]
+    pii: none
+  - name: subscription_started
+    props: [plan]
+    pii: billing_metadata_only

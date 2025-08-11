@@ -1,0 +1,48 @@
+{
+  "$themes": [
+    {
+      "id": "archedream-dark",
+      "name": "ArcheDream Dark",
+      "selectedTokenSets": {"colors":"enabled","typography":"enabled","radii":"enabled","spacing":"enabled","elevation":"enabled","motion":"enabled"},
+      "$schemaVersion": "1.0"
+    }
+  ],
+  "$metadata": {"tokenSetOrder": ["colors","typography","radii","spacing","elevation","motion"]},
+  "colors": {
+    "indigo": {"value":"#0A0F2C","type":"color"},
+    "iris": {"value":"#6E5AF0","type":"color"},
+    "azure": {"value":"#35C2C1","type":"color"},
+    "pearl": {"value":"#F4EFEA","type":"color"},
+    "coral": {"value":"#FF6B6B","type":"color"},
+    "text": {"value":"#E9E7F6","type":"color"},
+    "muted": {"value":"#A9A6C7","type":"color"},
+    "surface": {"value":"#0D1238","type":"color"},
+    "stroke": {"value":"rgba(255,255,255,0.12)","type":"color"}
+  },
+  "typography": {
+    "display": {"value": {"fontFamily":"Playfair Display","fontWeight":"600","fontSize":"24","lineHeight":"1.2"},"type":"typography"},
+    "body": {"value": {"fontFamily":"Inter","fontWeight":"400","fontSize":"16","lineHeight":"1.5"},"type":"typography"}
+  },
+  "radii": {
+    "sm": {"value":"8","type":"borderRadius"},
+    "md": {"value":"12","type":"borderRadius"},
+    "lg": {"value":"16","type":"borderRadius"},
+    "pill": {"value":"999","type":"borderRadius"}
+  },
+  "spacing": {
+    "xs": {"value":"4","type":"spacing"},
+    "sm": {"value":"8","type":"spacing"},
+    "md": {"value":"12","type":"spacing"},
+    "lg": {"value":"16","type":"spacing"},
+    "xl": {"value":"24","type":"spacing"},
+    "xxl": {"value":"32","type":"spacing"}
+  },
+  "elevation": {
+    "e1": {"value":"0 4 16 rgba(0,0,0,0.25)","type":"boxShadow"},
+    "e2": {"value":"0 8 28 rgba(0,0,0,0.32)","type":"boxShadow"}
+  },
+  "motion": {
+    "duration": {"value":"220","type":"other"},
+    "easing": {"value":"cubic-bezier(0.22,1,0.36,1)","type":"other"}
+  }
+}
