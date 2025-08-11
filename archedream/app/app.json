@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "ArcheDream",
+    "slug": "archedream",
+    "scheme": "archedream",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "sdkVersion": "51.0.0",
+    "platforms": ["ios","android","web"],
+    "assetBundlePatterns": ["**/*"],
+    "web": {"bundler": "metro"}
+  }
+}
