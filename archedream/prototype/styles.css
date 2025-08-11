@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Playfair+Display:wght@600&display=swap');
+:root{
+  --indigo:#0A0F2C; --iris:#6E5AF0; --azure:#35C2C1; --pearl:#F4EFEA; --coral:#FF6B6B;
+  --text:#E9E7F6; --muted:#A9A6C7;
+}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 800px at 20% -10%, rgba(110,90,240,.15), transparent), var(--indigo);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial}
+h1,h2{font-family:"Playfair Display",serif}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0B1030;border-bottom:1px solid rgba(255,255,255,.05)}
+.brand{font-weight:600;letter-spacing:.5px}
+.tabs{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.06)}
+.tab{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,.08);padding:8px 12px;border-radius:999px;cursor:pointer}
+.tab.active{color:var(--pearl);border-color:var(--iris);box-shadow:0 0 0 1px rgba(110,90,240,.35)}
+main{max-width:960px;margin:0 auto;padding:24px}
+.hero{padding:32px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:linear-gradient(180deg, rgba(110,90,240,.08), rgba(10,15,44,.6))}
+.cta-row{display:flex;gap:12px;margin-top:12px}
+.primary{background:var(--iris);color:white;border:none;padding:10px 14px;border-radius:12px;cursor:pointer}
+.ghost{background:transparent;border:1px solid rgba(255,255,255,.15);color:var(--pearl);padding:10px 14px;border-radius:12px;cursor:pointer}
+label{display:block;margin:12px 0 6px;color:var(--muted)}
+textarea,select{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:var(--pearl);padding:10px;border-radius:12px}
+.actions{display:flex;gap:12px;margin-top:12px}
+.wheel-card{margin-top:24px;padding:20px;border:1px solid rgba(255,255,255,.08);border-radius:16px}
+#wheel{display:flex;justify-content:center;align-items:center;height:320px}
+.legend{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:8px;background:rgba(53,194,193,.14);border:1px solid rgba(53,194,193,.4);padding:6px 10px;border-radius:999px}
+.insight{border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;background:rgba(255,255,255,.03)}
+.practices{display:grid;gap:12px}
+.practices .card{border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;background:rgba(110,90,240,.06)}
+.tips{margin-top:12px;color:var(--muted)}
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+.modal.hidden{display:none}
+.modal-content{background:#0D1238;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px;max-width:520px}
+footer{padding:16px;text-align:center;color:var(--muted)}
+.sanctuary{filter:saturate(.8) brightness(.94)}

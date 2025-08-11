@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ArcheDream — Прототип</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">ArcheDream</div>
+    <div class="sanctuary-toggle">
+      <label><input type="checkbox" id="sanctuaryToggle" /> Святилище</label>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="home">Домой</button>
+    <button class="tab" data-tab="record">Записать сон</button>
+    <button class="tab" data-tab="insight">Инсайт</button>
+    <button class="tab" data-tab="integrate">Интеграция</button>
+  </nav>
+
+  <main>
+    <section id="home" class="tabpane active">
+      <div class="hero">
+        <h1>Сон — не загадка, а карта</h1>
+        <p>Мандала архетипов, бережные инсайты и маленькие шаги.</p>
+        <div class="cta-row">
+          <button class="primary" data-tab-jump="record">Записать сон</button>
+          <button class="ghost" data-tab-jump="insight">Посмотреть мандалу</button>
+        </div>
+      </div>
+      <div class="weekly-archetype">
+        <h2>Звучащий архетип недели</h2>
+        <div id="weeklyBadge" class="badge">—</div>
+      </div>
+      <div class="wheel-card">
+        <h2>Мандала архетипов</h2>
+        <div id="wheel"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </section>
+
+    <section id="record" class="tabpane">
+      <h2>Запись сна</h2>
+      <label>Режим глубины
+        <select id="depth">
+          <option value="light">Легкая</option>
+          <option value="standard" selected>Стандарт</option>
+          <option value="deep">Глубокая</option>
+        </select>
+      </label>
+      <label>Настроение
+        <select id="mood">
+          <option value="спокойно">спокойно</option>
+          <option value="интерес">интерес</option>
+          <option value="тревога">тревога</option>
+          <option value="радость">радость</option>
+          <option value="грусть">грусть</option>
+        </select>
+      </label>
+      <label>Сон
+        <textarea id="dreamText" rows="8" placeholder="Опишите сон — образы, места, аффекты…"></textarea>
+      </label>
+      <div class="actions">
+        <button id="analyze" class="primary">Получить инсайт</button>
+        <button id="incubate" class="ghost">Ритуал инкубации</button>
+      </div>
+      <details class="tips"><summary>Подсказки</summary>
+        <ul>
+          <li>Где это происходит? Кто рядом? Что вы чувствуете в теле?</li>
+          <li>Что это напоминает из жизни сейчас?</li>
+        </ul>
+      </details>
+    </section>
+
+    <section id="insight" class="tabpane">
+      <h2>Инсайт</h2>
+      <div id="insightContent" class="insight"></div>
+    </section>
+
+    <section id="integrate" class="tabpane">
+      <h2>Кабинет интеграции</h2>
+      <div id="practices" class="practices"></div>
+    </section>
+  </main>
+
+  <div id="incubationModal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Ритуал инкубации (2–3 мин)</h3>
+      <ol>
+        <li>Намерение: одна фраза в первое лицо.</li>
+        <li>Дыхание 4–6; расслабьте плечи; запишите вопрос.</li>
+        <li>Контейнер: положите символ рядом, отключите уведомления.</li>
+      </ol>
+      <button id="closeIncubation" class="primary">Готово</button>
+    </div>
+  </div>
+
+  <footer>
+    <small>Не медицинское приложение. 18+. Прототип © ArcheDream</small>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
