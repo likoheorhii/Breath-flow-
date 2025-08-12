@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Text, View, TouchableOpacity, TextInput, ScrollView, Linking } from 'react-native';
 import { colors, spacing } from './theme/tokens';
-import { fetchInsight, Mood, DepthMode } from './lib/api';
+import { fetchInsight, Mood, DepthMode, transcribeAudio } from './lib/api';
 import AudioRecorder from './components/AudioRecorder';
-import { addDream } from './lib/storage';
+import { addDream, getDreams, DreamEntry } from './lib/storage';
 
 function Tab({label, active, onPress}:{label:string;active:boolean;onPress:()=>void}){
   return (
@@ -17,27 +17,29 @@ function Home({go}:{go:(s:string)=>void}){
   return (
     <ScrollView style={{flex:1,backgroundColor:colors.indigo,padding:spacing.lg}}>
       <Text style={{color:colors.text,fontSize:28,marginBottom:spacing.md}}>Сон — не загадка, а карта</Text>
-      <View style={{flexDirection:'row',gap:spacing.sm}}>
-        <TouchableOpacity onPress={()=>go('record')} style={{backgroundColor:colors.iris,padding:10,borderRadius:12,marginRight:8}}><Text style={{color:'#fff'}}>Записать сон</Text></TouchableOpacity>
-        <TouchableOpacity onPress={()=>go('insight')} style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,padding:10,borderRadius:12}}><Text style={{color:colors.text}}>Посмотреть мандалу</Text></TouchableOpacity>
+      <View style={{flexDirection:'row',gap:spacing.sm,flexWrap:'wrap'}}>
+        <TouchableOpacity onPress={()=>go('record')} style={{backgroundColor:colors.iris,padding:10,borderRadius:12,marginRight:8,marginBottom:8}}><Text style={{color:'#fff'}}>Записать сон</Text></TouchableOpacity>
+        <TouchableOpacity onPress={()=>go('insight')} style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,padding:10,borderRadius:12,marginRight:8,marginBottom:8}}><Text style={{color:colors.text}}>Посмотреть мандалу</Text></TouchableOpacity>
+        <TouchableOpacity onPress={()=>go('diary')} style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,padding:10,borderRadius:12,marginRight:8,marginBottom:8}}><Text style={{color:colors.text}}>Дневник</Text></TouchableOpacity>
       </View>
     </ScrollView>
   );
 }
 
 function Record({go,setDraft,setMood,setDepth}:{go:(s:string)=>void;setDraft:(t:string)=>void;setMood:(m:Mood)=>void;setDepth:(d:DepthMode)=>void}){
-  const [text,setText] = useState('Иду по тёмному коридору, собака ведёт меня к двери.');
+  const [text,setText] = useState('');
   const [moodLocal,setMoodLocal]=useState<Mood>('тревога');
   const [depthLocal,setDepthLocal]=useState<DepthMode>('standard');
   const [audioUri,setAudioUri]=useState<string|undefined>();
-  const save = async ()=>{
-    await addDream({ text, mood: moodLocal, audioUri });
-  };
+  const [transcribing,setTranscribing]=useState(false);
+  const save = async ()=>{ await addDream({ text, mood: moodLocal, audioUri }); };
+  const onAudio = async (uri:string)=>{ setAudioUri(uri); try{ setTranscribing(true); const t = await transcribeAudio({ uri }); if(t?.text) setText((prev)=> prev? prev+"\n"+t.text : t.text); }catch(e){} finally{ setTranscribing(false);} };
   return (
     <ScrollView style={{flex:1,backgroundColor:colors.indigo,padding:spacing.lg}}>
       <Text style={{color:colors.text,fontSize:20,marginBottom:spacing.md}}>Записать сон</Text>
       <Text style={{color:colors.muted, marginBottom:4}}>Аудио‑дневник</Text>
-      <AudioRecorder onFinish={(uri)=>setAudioUri(uri)} />
+      <AudioRecorder onFinish={onAudio} />
+      {transcribing && <Text style={{color:colors.muted,marginBottom:spacing.sm}}>Расшифровка аудио…</Text>}
       <Text style={{color:colors.muted, marginBottom:4}}>Глубина</Text>
       <View style={{flexDirection:'row',marginBottom:spacing.md}}>
         {(['light','standard','deep'] as DepthMode[]).map(d=> (
@@ -60,6 +62,39 @@ function Record({go,setDraft,setMood,setDepth}:{go:(s:string)=>void;setDraft:(t:
         <TouchableOpacity onPress={()=>{setDraft(text);setMood(moodLocal);setDepth(depthLocal);go('insight');}} style={{backgroundColor:colors.iris,padding:10,borderRadius:12,marginRight:8,marginBottom:8}}><Text style={{color:'#fff'}}>Получить инсайт</Text></TouchableOpacity>
         <TouchableOpacity onPress={save} style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,padding:10,borderRadius:12,marginRight:8,marginBottom:8}}><Text style={{color:colors.text}}>Сохранить в дневник</Text></TouchableOpacity>
       </View>
+    </ScrollView>
+  );
+}
+
+function Diary(){
+  const [items,setItems]=useState<DreamEntry[]>([]);
+  useEffect(()=>{ (async()=> setItems(await getDreams()))(); },[]);
+  return (
+    <ScrollView style={{flex:1,backgroundColor:colors.indigo,padding:spacing.lg}}>
+      <Text style={{color:colors.text,fontSize:20,marginBottom:spacing.sm}}>Дневник снов</Text>
+      {items.map(it=> (
+        <View key={it.id} style={{borderColor:'rgba(255,255,255,0.12)',borderWidth:1,borderRadius:12,padding:12,marginBottom:12}}>
+          <Text style={{color:colors.muted,marginBottom:6}}>{new Date(it.createdAt).toLocaleString()} · {it.mood||''}</Text>
+          {!!it.text && <Text style={{color:colors.text,marginBottom:6}}>{it.text}</Text>}
+          {!!it.audioUri && (
+            <TouchableOpacity onPress={()=> Linking.openURL(it.audioUri!)} style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,borderRadius:12,padding:8,alignSelf:'flex-start'}}>
+              <Text style={{color:colors.text}}>Прослушать аудио</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function Integrate(){
+  const [done,setDone]=useState(false);
+  return (
+    <ScrollView style={{flex:1,backgroundColor:colors.indigo,padding:spacing.lg}}>
+      <Text style={{color:colors.text,fontSize:20,marginBottom:spacing.sm}}>Кабинет интеграции</Text>
+      <TouchableOpacity onPress={()=>setDone(!done)} style={{backgroundColor: done?colors.iris:'rgba(110,90,240,0.06)', padding:12, borderRadius:16}}>
+        <Text style={{color: colors.text}}>{done?'Готово ✓':'Свет в коридоре — 10 мин'}</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -106,36 +141,26 @@ function Insight({draft,go,mood,depth}:{draft:string;go:(s:string)=>void;mood:Mo
   );
 }
 
-function Integrate(){
-  const [done,setDone]=useState(false);
-  return (
-    <ScrollView style={{flex:1,backgroundColor:colors.indigo,padding:spacing.lg}}>
-      <Text style={{color:colors.text,fontSize:20,marginBottom:spacing.sm}}>Кабинет интеграции</Text>
-      <TouchableOpacity onPress={()=>setDone(!done)} style={{backgroundColor: done?colors.iris:'rgba(110,90,240,0.06)', padding:12, borderRadius:16}}>
-        <Text style={{color: colors.text}}>{done?'Готово ✓':'Свет в коридоре — 10 мин'}</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-}
-
 export default function App(){
-  const [tab,setTab] = useState<'home'|'record'|'insight'|'integrate'>('home');
+  const [tab,setTab] = useState<'home'|'record'|'insight'|'integrate'|'diary'>('home');
   const [draft,setDraft] = useState('');
   const [mood,setMood] = useState<Mood>('тревога');
   const [depth,setDepth] = useState<DepthMode>('standard');
   const go = (t:string)=>setTab(t as any);
   return (
     <View style={{flex:1,backgroundColor:colors.indigo}}>
-      <View style={{flexDirection:'row',padding:spacing.md}}>
+      <View style={{flexDirection:'row',padding:spacing.md,flexWrap:'wrap'}}>
         <Tab label='Домой' active={tab==='home'} onPress={()=>setTab('home')}/>
         <Tab label='Запись' active={tab==='record'} onPress={()=>setTab('record')}/>
         <Tab label='Инсайт' active={tab==='insight'} onPress={()=>setTab('insight')}/>
         <Tab label='Интеграция' active={tab==='integrate'} onPress={()=>setTab('integrate')}/>
+        <Tab label='Дневник' active={tab==='diary'} onPress={()=>setTab('diary')}/>
       </View>
       {tab==='home' && <Home go={go}/>} 
       {tab==='record' && <Record go={go} setDraft={setDraft} setMood={setMood} setDepth={setDepth}/>} 
       {tab==='insight' && <Insight draft={draft} go={go} mood={mood} depth={depth}/>} 
       {tab==='integrate' && <Integrate/>}
+      {tab==='diary' && <Diary/>}
     </View>
   );
 }
