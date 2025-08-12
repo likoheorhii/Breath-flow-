@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
 const app = express();
+const { TelegramBot } = require('./telegram');
 
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -20,6 +21,8 @@ const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-reasoner';
 const DEEPSEEK_ASR_MODEL = process.env.DEEPSEEK_ASR_MODEL || 'whisper-1';
 const API_AUTH_TOKEN = process.env.API_AUTH_TOKEN;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_POLLING = String(process.env.TELEGRAM_POLLING||'').toLowerCase()==='true';
 
 // Optional bearer token guard
 app.use((req,res,next)=>{
@@ -60,6 +63,41 @@ async function deepseekInsight({text, mood='спокойно', depth='standard',
   let parsed; try { parsed = JSON.parse(content); } catch { parsed = { summary: content }; }
   return parsed;
 }
+
+async function insightTextResponse(text){
+  try{
+    if(DEEPSEEK_API_KEY){
+      const out = await deepseekInsight({ text, mood:'спокойно', depth:'standard', associations:[] });
+      const arch = (out.archetypes||[]).map(a=>a.name||a).join(', ');
+      const q = Array.isArray(out.questions)? out.questions.map(x=>`• ${x}`).join('\n'):'';
+      const pr = out.practice? `Практика: ${out.practice.title||''}\n${(out.practice.steps||[]).map((s,i)=>`${i+1}) ${s}`).join('\n')}`:'';
+      return `Архетипы: ${arch||'—'}\nКратко: ${out.summary||'—'}\n${q}\n${pr}`.trim();
+    }
+    const h = heuristic(text);
+    return `Архетипы (эвристика): ${(h.archetypes||[]).join(', ')||'—'}\nПочему: ${(h.symbols||[]).map(s=>`${s.span}→${s.label}`).join(', ')}`;
+  }catch(e){ return 'Не удалось получить инсайт сейчас.'; }
+}
+
+async function startTelegram(){
+  if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_POLLING) return;
+  const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+  console.log('Telegram bot polling started');
+  while(true){
+    try{
+      const updates = await bot.getUpdates();
+      for(const u of updates){
+        bot.offset = u.update_id;
+        const msg = u.message; if(!msg || !msg.text) continue;
+        const chatId = msg.chat.id; const text = msg.text.trim();
+        if(text.startsWith('/start')){ await bot.sendMessage(chatId, 'Пришлите текст сна, я отвечу коротким инсайтом.'); continue; }
+        const reply = await insightTextResponse(text);
+        await bot.sendMessage(chatId, reply);
+      }
+    }catch{ /* silent retry */ }
+  }
+}
+
+startTelegram();
 
 app.post('/insights', async (req,res)=>{
   const { text, mood='спокойно', depth='standard', associations=[] } = req.body || {};
