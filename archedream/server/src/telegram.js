@@ -17,6 +17,18 @@ class TelegramBot {
     const data = await res.json();
     return data.result||[];
   }
+  async setMyCommands(commands){
+    await fetch(`${this.base}/setMyCommands`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ commands }) });
+  }
+  async setMyDescription(description){
+    await fetch(`${this.base}/setMyDescription`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ description }) });
+  }
+  async setMyShortDescription(short_description){
+    await fetch(`${this.base}/setMyShortDescription`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ short_description }) });
+  }
+  async setMyName(name){
+    await fetch(`${this.base}/setMyName`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+  }
 }
 
 module.exports = { TelegramBot };

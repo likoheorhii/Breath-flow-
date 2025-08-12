@@ -121,11 +121,23 @@ async function insightTextResponse(text){
 async function startTelegram(){
   if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_POLLING) return;
   const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
-  console.log('Telegram bot polling started');
+  console.log('Telegram bot polling starting…');
+  try{
+    await bot.setMyName('ArcheDream');
+    await bot.setMyShortDescription('Бережный юнгианский разбор снов');
+    await bot.setMyDescription('Пришлите текст или голосовое сна — отвечу архетипами, вопросами и практикой.');
+    await bot.setMyCommands([
+      { command:'start', description:'Начать и увидеть меню' },
+      { command:'help', description:'Как получить разбор' },
+      { command:'practice', description:'Практика дня (10 минут)' }
+    ]);
+  }catch(e){ console.log('Bot profile setup error:', String(e)); }
+
   const keyboard = { keyboard: [[{text:'Записать сон'},{text:'Получить инсайт'}],[{text:'Практика дня'}]], resize_keyboard: true, one_time_keyboard: false };
+  let backoff = 1000;
   while(true){
     try{
-      const updates = await bot.getUpdates();
+      const updates = await bot.getUpdates(); backoff = 1000;
       for(const u of updates){
         bot.offset = u.update_id;
         const msg = u.message; if(!msg) continue;
@@ -133,26 +145,27 @@ async function startTelegram(){
         if(msg.text){
           const text = msg.text.trim();
           if(text.startsWith('/start')){ await bot.sendMessage(chatId, 'Привет! Пришлите текст или голосовое. Я отвечу бережным юнгианским инсайтом.', 'HTML', keyboard); continue; }
-          if(text === 'Записать сон'){ await bot.sendMessage(chatId, 'Опишите сон в одном-двух абзацах и отправьте.'); continue; }
-          if(text === 'Практика дня'){ await bot.sendMessage(chatId, '<b>Практика дня:</b> 10 вдохов доверия. На выдохе: «Я рядом с собой».', 'HTML'); continue; }
-          if(text === 'Получить инсайт'){ await bot.sendMessage(chatId, 'Пришлите сон текстом или голосовым — я отвечу.'); continue; }
+          if(text.startsWith('/help')){ await bot.sendMessage(chatId, 'Напишите сон текстом или пришлите голосовое — я верну архетипы, вопросы и практику.'); continue; }
+          if(text.startsWith('/practice') || text==='Практика дня'){ await bot.sendMessage(chatId, '<b>Практика дня:</b> 10 вдохов доверия. На выдохе: «Я рядом с собой».', 'HTML'); continue; }
+          if(text === 'Записать сон' || text==='Получить инсайт'){ await bot.sendMessage(chatId, 'Опишите сон и отправьте. Для голосовой — удерживайте микрофон.'); continue; }
           const reply = await insightTextResponse(text);
           await bot.sendMessage(chatId, reply, 'HTML');
         } else if(msg.voice || msg.audio){
-          const fileId = (msg.voice||msg.audio).file_id;
-          const base = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-          const gf = await fetch(`${base}/getFile?file_id=${fileId}`).then(r=>r.json());
-          const path = gf.result?.file_path; if(!path){ await bot.sendMessage(chatId,'Не удалось скачать аудио.'); continue; }
-          const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${path}`;
-          const buf = await fetch(fileUrl).then(r=>r.arrayBuffer()).then(b=>Buffer.from(b));
-          let text='';
-          try{ text = await deepseekTranscribeFromBuffer(buf, 'voice.ogg'); }catch{ await bot.sendMessage(chatId,'Не удалось распознать аудио.'); continue; }
-          const reply = await insightTextResponse(text);
-          await bot.sendMessage(chatId, `<b>Расшифровка:</b> ${text}`, 'HTML');
-          await bot.sendMessage(chatId, reply, 'HTML');
+          try{
+            const fileId = (msg.voice||msg.audio).file_id;
+            const base = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+            const gf = await fetch(`${base}/getFile?file_id=${fileId}`).then(r=>r.json());
+            const path = gf.result?.file_path; if(!path){ await bot.sendMessage(chatId,'Не удалось скачать аудио.'); continue; }
+            const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${path}`;
+            const buf = await fetch(fileUrl).then(r=>r.arrayBuffer()).then(b=>Buffer.from(b));
+            const text = await deepseekTranscribeFromBuffer(buf, 'voice.ogg');
+            const reply = await insightTextResponse(text);
+            await bot.sendMessage(chatId, `<b>Расшифровка:</b> ${text}`, 'HTML');
+            await bot.sendMessage(chatId, reply, 'HTML');
+          }catch(e){ await bot.sendMessage(chatId, 'Не удалось обработать голосовое. Попробуйте текстом.'); }
         }
       }
-    }catch{ /* silent retry */ }
+    }catch(e){ console.log('Polling error, retry soon:', String(e)); await new Promise(r=>setTimeout(r, backoff)); backoff = Math.min(backoff*2, 15000); }
   }
 }
 
