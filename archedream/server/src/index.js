@@ -1,13 +1,33 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
 const app = express();
-app.use(cors()); app.use(express.json());
+
+// Security middleware
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+const origins = (process.env.CORS_ORIGINS || '').split(',').filter(Boolean);
+app.use(cors({ origin: origins.length ? origins : true }));
+app.use(express.json());
+
+const limiter = rateLimit({ windowMs: 15*60*1000, max: 200 });
+app.use(limiter);
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-reasoner';
 const DEEPSEEK_ASR_MODEL = process.env.DEEPSEEK_ASR_MODEL || 'whisper-1';
+const API_AUTH_TOKEN = process.env.API_AUTH_TOKEN;
+
+// Optional bearer token guard
+app.use((req,res,next)=>{
+  if(!API_AUTH_TOKEN) return next();
+  const h = req.headers['authorization'] || '';
+  if(h === `Bearer ${API_AUTH_TOKEN}`) return next();
+  return res.status(401).json({ error: 'unauthorized' });
+});
 
 app.get('/health', (_,res)=>res.json({ok:true, llm: !!DEEPSEEK_API_KEY}));
 
@@ -29,31 +49,15 @@ function heuristic(text){
 
 async function deepseekInsight({text, mood='спокойно', depth='standard', associations=[]}){
   const system = 'Роль: юнгианский аналитик, бережный, не-директивный. Дай краткий бережный разбор без медицины. Форматируй как JSON.';
-  const user = {
-    dream_text: text,
-    mood,
-    associations,
-    depth,
-    instructions: 'Верни JSON с полями: summary, archetypes[ {name, evidence[]} ], symbols[ {span,label} ], questions[3-5], practice{title,steps[],duration_min}, safety_notes[]. Максимум 3 архетипа.'
-  };
+  const user = { dream_text: text, mood, associations, depth, instructions: 'Верни JSON с полями: summary, archetypes[ {name, evidence[]} ], symbols[ {span,label} ], questions[3-5], practice{title,steps[],duration_min}, safety_notes[]. Максимум 3 архетипа.' };
   const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
-    body: JSON.stringify({
-      model: DEEPSEEK_MODEL,
-      messages: [ { role:'system', content: system }, { role:'user', content: JSON.stringify(user) } ],
-      temperature: 0.3,
-      response_format: { type: 'json_object' }
-    })
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
+    body: JSON.stringify({ model: DEEPSEEK_MODEL, messages: [ { role:'system', content: system }, { role:'user', content: JSON.stringify(user) } ], temperature: 0.3, response_format: { type: 'json_object' } })
   });
-  if(!resp.ok){
-    const t = await resp.text();
-    throw new Error(`DeepSeek error ${resp.status}: ${t}`);
-  }
+  if(!resp.ok){ const t = await resp.text(); throw new Error(`DeepSeek error ${resp.status}: ${t}`); }
   const data = await resp.json();
   const content = data.choices?.[0]?.message?.content || '{}';
-  let parsed;
-  try { parsed = JSON.parse(content); } catch { parsed = { summary: content }; }
+  let parsed; try { parsed = JSON.parse(content); } catch { parsed = { summary: content }; }
   return parsed;
 }
 
@@ -61,43 +65,23 @@ app.post('/insights', async (req,res)=>{
   const { text, mood='спокойно', depth='standard', associations=[] } = req.body || {};
   if(!text) return res.status(400).json({error:'text required'});
   try{
-    if(DEEPSEEK_API_KEY){
-      const out = await deepseekInsight({text, mood, depth, associations});
-      return res.json(out);
-    }
+    if(DEEPSEEK_API_KEY){ const out = await deepseekInsight({text, mood, depth, associations}); return res.json(out); }
     return res.json(heuristic(text));
-  }catch(err){
-    console.error(err);
-    return res.json(heuristic(text));
-  }
+  }catch(err){ console.error(err); return res.json(heuristic(text)); }
 });
 
-// Audio transcription endpoint
 app.post('/transcribe', upload.single('audio'), async (req,res)=>{
   try{
-    if(!DEEPSEEK_API_KEY){
-      return res.status(400).json({error:'DEEPSEEK_API_KEY required for transcription'});
-    }
+    if(!DEEPSEEK_API_KEY){ return res.status(400).json({error:'DEEPSEEK_API_KEY required for transcription'}); }
     if(!req.file){ return res.status(400).json({error:'audio file is required (field: audio)'}); }
-    // Using OpenAI-compatible Whisper endpoint if available at DeepSeek
     const form = new FormData();
     form.append('file', new Blob([req.file.buffer]), req.file.originalname || 'audio.m4a');
     form.append('model', DEEPSEEK_ASR_MODEL);
-    const resp = await fetch('https://api.deepseek.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
-      body: form
-    });
-    if(!resp.ok){
-      const t = await resp.text();
-      throw new Error(`DeepSeek ASR error ${resp.status}: ${t}`);
-    }
+    const resp = await fetch('https://api.deepseek.com/v1/audio/transcriptions', { method: 'POST', headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` }, body: form });
+    if(!resp.ok){ const t = await resp.text(); throw new Error(`DeepSeek ASR error ${resp.status}: ${t}`); }
     const data = await resp.json();
     return res.json({ text: data.text || data.transcription || '' });
-  }catch(e){
-    console.error(e);
-    return res.status(500).json({error:'transcription_failed', detail: String(e)});
-  }
+  }catch(e){ console.error(e); return res.status(500).json({error:'transcription_failed', detail: String(e)}); }
 });
 
 const port = process.env.PORT || 4000;
