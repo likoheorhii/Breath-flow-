@@ -1,7 +1,8 @@
 export type DepthMode = 'light' | 'standard' | 'deep';
 export type Mood = 'спокойно' | 'интерес' | 'тревога' | 'радость' | 'грусть';
+import { CONFIG } from '../config';
 
-const API_BASE = 'http://localhost:4000';
+const API_BASE = CONFIG.API_BASE;
 
 export async function fetchInsight(args: { text: string; mood: Mood; depth: DepthMode; associations?: string[] }){
   const res = await fetch(`${API_BASE}/insights`, {

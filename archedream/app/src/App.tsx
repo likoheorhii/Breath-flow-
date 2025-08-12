@@ -4,6 +4,7 @@ import { colors, spacing } from './theme/tokens';
 import { fetchInsight, Mood, DepthMode, transcribeAudio } from './lib/api';
 import AudioRecorder from './components/AudioRecorder';
 import { addDream, getDreams, DreamEntry } from './lib/storage';
+import { Audio } from 'expo-av';
 
 function Tab({label, active, onPress}:{label:string;active:boolean;onPress:()=>void}){
   return (
@@ -68,7 +69,15 @@ function Record({go,setDraft,setMood,setDepth}:{go:(s:string)=>void;setDraft:(t:
 
 function Diary(){
   const [items,setItems]=useState<DreamEntry[]>([]);
+  const [playing,setPlaying]=useState<string|null>(null);
   useEffect(()=>{ (async()=> setItems(await getDreams()))(); },[]);
+  const play = async (uri:string, id:string)=>{
+    try{
+      const { sound } = await Audio.Sound.createAsync({ uri });
+      setPlaying(id); await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate((s)=>{ if((s as any).didJustFinish){ setPlaying(null); sound.unloadAsync(); } });
+    }catch{}
+  };
   return (
     <ScrollView style={{flex:1,backgroundColor:colors.indigo,padding:spacing.lg}}>
       <Text style={{color:colors.text,fontSize:20,marginBottom:spacing.sm}}>Дневник снов</Text>
@@ -77,8 +86,8 @@ function Diary(){
           <Text style={{color:colors.muted,marginBottom:6}}>{new Date(it.createdAt).toLocaleString()} · {it.mood||''}</Text>
           {!!it.text && <Text style={{color:colors.text,marginBottom:6}}>{it.text}</Text>}
           {!!it.audioUri && (
-            <TouchableOpacity onPress={()=> Linking.openURL(it.audioUri!)} style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,borderRadius:12,padding:8,alignSelf:'flex-start'}}>
-              <Text style={{color:colors.text}}>Прослушать аудио</Text>
+            <TouchableOpacity onPress={()=> play(it.audioUri!, it.id)} style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,borderRadius:12,padding:8,alignSelf:'flex-start'}}>
+              <Text style={{color:colors.text}}>{playing===it.id?'Воспроизведение…':'Прослушать аудио'}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -116,9 +125,8 @@ function Insight({draft,go,mood,depth}:{draft:string;go:(s:string)=>void;mood:Mo
   const [loading,setLoading]=useState(false);
   const [server,setServer]=useState<any>(null);
   const {symbols, top} = heuristic(draft||'');
-  const run = async ()=>{
-    try{ setLoading(true); const data = await fetchInsight({ text: draft, mood, depth }); setServer(data);}catch(e){ setServer(null);} finally{ setLoading(false); }
-  };
+  const run = async ()=>{ try{ setLoading(true); const data = await fetchInsight({ text: draft, mood, depth }); setServer(data);}catch(e){ setServer(null);} finally{ setLoading(false); } };
+  const serverArch = (server?.archetypes||[]).map((a:any)=>a.name||a).join(', ');
   return (
     <ScrollView style={{flex:1,backgroundColor:colors.indigo,padding:spacing.lg}}>
       <Text style={{color:colors.text,fontSize:20,marginBottom:spacing.sm}}>Инсайт</Text>
@@ -127,8 +135,13 @@ function Insight({draft,go,mood,depth}:{draft:string;go:(s:string)=>void;mood:Mo
       </TouchableOpacity>
       {server ? (
         <View>
-          <Text style={{color:colors.text,marginBottom:spacing.sm}}>Архетипы: {(server.archetypes||[]).map((a:any)=>a.name||a).join(', ')}</Text>
+          <Text style={{color:colors.text,marginBottom:spacing.sm}}>Архетипы: {serverArch}</Text>
           <Text style={{color:colors.text,marginBottom:spacing.sm}}>Кратко: {server.summary||'—'}</Text>
+          {!!server.questions && <View style={{marginBottom:spacing.md}}>{server.questions.map((q:string, i:number)=>(<Text key={i} style={{color:colors.muted}}>• {q}</Text>))}</View>}
+          {!!server.practice && <View style={{borderColor:'rgba(255,255,255,0.12)',borderWidth:1,borderRadius:12,padding:12,marginBottom:spacing.md}}>
+            <Text style={{color:colors.text,marginBottom:6}}>Практика: {server.practice.title||'—'}</Text>
+            {Array.isArray(server.practice.steps) && server.practice.steps.map((s:string, i:number)=>(<Text key={i} style={{color:colors.muted}}>{i+1}) {s}</Text>))}
+          </View>}
         </View>
       ) : (
         <View>
