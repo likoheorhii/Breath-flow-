@@ -29,6 +29,12 @@ class TelegramBot {
   async setMyName(name){
     await fetch(`${this.base}/setMyName`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
   }
+  async setWebhook(url){
+    await fetch(`${this.base}/setWebhook`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) });
+  }
+  async deleteWebhook(){
+    await fetch(`${this.base}/deleteWebhook`, { method:'POST' });
+  }
 }
 
 module.exports = { TelegramBot };
