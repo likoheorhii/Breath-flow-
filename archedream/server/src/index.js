@@ -122,6 +122,7 @@ async function startTelegram(){
   if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_POLLING) return;
   const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
   console.log('Telegram bot polling started');
+  const keyboard = { keyboard: [[{text:'Записать сон'},{text:'Получить инсайт'}],[{text:'Практика дня'}]], resize_keyboard: true, one_time_keyboard: false };
   while(true){
     try{
       const updates = await bot.getUpdates();
@@ -131,12 +132,14 @@ async function startTelegram(){
         const chatId = msg.chat.id;
         if(msg.text){
           const text = msg.text.trim();
-          if(text.startsWith('/start')){ await bot.sendMessage(chatId, 'Пришлите текст или голосовое. Я отвечу бережным юнгианским инсайтом.', 'HTML'); continue; }
+          if(text.startsWith('/start')){ await bot.sendMessage(chatId, 'Привет! Пришлите текст или голосовое. Я отвечу бережным юнгианским инсайтом.', 'HTML', keyboard); continue; }
+          if(text === 'Записать сон'){ await bot.sendMessage(chatId, 'Опишите сон в одном-двух абзацах и отправьте.'); continue; }
+          if(text === 'Практика дня'){ await bot.sendMessage(chatId, '<b>Практика дня:</b> 10 вдохов доверия. На выдохе: «Я рядом с собой».', 'HTML'); continue; }
+          if(text === 'Получить инсайт'){ await bot.sendMessage(chatId, 'Пришлите сон текстом или голосовым — я отвечу.'); continue; }
           const reply = await insightTextResponse(text);
           await bot.sendMessage(chatId, reply, 'HTML');
         } else if(msg.voice || msg.audio){
           const fileId = (msg.voice||msg.audio).file_id;
-          // getFile
           const base = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
           const gf = await fetch(`${base}/getFile?file_id=${fileId}`).then(r=>r.json());
           const path = gf.result?.file_path; if(!path){ await bot.sendMessage(chatId,'Не удалось скачать аудио.'); continue; }
