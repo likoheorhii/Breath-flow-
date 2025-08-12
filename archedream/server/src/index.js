@@ -1,10 +1,13 @@
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
+const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
 const app = express();
 app.use(cors()); app.use(express.json());
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-reasoner';
+const DEEPSEEK_ASR_MODEL = process.env.DEEPSEEK_ASR_MODEL || 'whisper-1';
 
 app.get('/health', (_,res)=>res.json({ok:true, llm: !!DEEPSEEK_API_KEY}));
 
@@ -48,7 +51,6 @@ async function deepseekInsight({text, mood='спокойно', depth='standard',
     throw new Error(`DeepSeek error ${resp.status}: ${t}`);
   }
   const data = await resp.json();
-  // OpenAI-compatible shape
   const content = data.choices?.[0]?.message?.content || '{}';
   let parsed;
   try { parsed = JSON.parse(content); } catch { parsed = { summary: content }; }
@@ -66,8 +68,35 @@ app.post('/insights', async (req,res)=>{
     return res.json(heuristic(text));
   }catch(err){
     console.error(err);
-    // graceful fallback
     return res.json(heuristic(text));
+  }
+});
+
+// Audio transcription endpoint
+app.post('/transcribe', upload.single('audio'), async (req,res)=>{
+  try{
+    if(!DEEPSEEK_API_KEY){
+      return res.status(400).json({error:'DEEPSEEK_API_KEY required for transcription'});
+    }
+    if(!req.file){ return res.status(400).json({error:'audio file is required (field: audio)'}); }
+    // Using OpenAI-compatible Whisper endpoint if available at DeepSeek
+    const form = new FormData();
+    form.append('file', new Blob([req.file.buffer]), req.file.originalname || 'audio.m4a');
+    form.append('model', DEEPSEEK_ASR_MODEL);
+    const resp = await fetch('https://api.deepseek.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
+      body: form
+    });
+    if(!resp.ok){
+      const t = await resp.text();
+      throw new Error(`DeepSeek ASR error ${resp.status}: ${t}`);
+    }
+    const data = await resp.json();
+    return res.json({ text: data.text || data.transcription || '' });
+  }catch(e){
+    console.error(e);
+    return res.status(500).json({error:'transcription_failed', detail: String(e)});
   }
 });
 

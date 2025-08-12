@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { Text, View, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import { colors, spacing } from './theme/tokens';
 import { fetchInsight, Mood, DepthMode } from './lib/api';
+import AudioRecorder from './components/AudioRecorder';
+import { addDream } from './lib/storage';
 
 function Tab({label, active, onPress}:{label:string;active:boolean;onPress:()=>void}){
   return (
@@ -27,9 +29,15 @@ function Record({go,setDraft,setMood,setDepth}:{go:(s:string)=>void;setDraft:(t:
   const [text,setText] = useState('Иду по тёмному коридору, собака ведёт меня к двери.');
   const [moodLocal,setMoodLocal]=useState<Mood>('тревога');
   const [depthLocal,setDepthLocal]=useState<DepthMode>('standard');
+  const [audioUri,setAudioUri]=useState<string|undefined>();
+  const save = async ()=>{
+    await addDream({ text, mood: moodLocal, audioUri });
+  };
   return (
     <ScrollView style={{flex:1,backgroundColor:colors.indigo,padding:spacing.lg}}>
       <Text style={{color:colors.text,fontSize:20,marginBottom:spacing.md}}>Записать сон</Text>
+      <Text style={{color:colors.muted, marginBottom:4}}>Аудио‑дневник</Text>
+      <AudioRecorder onFinish={(uri)=>setAudioUri(uri)} />
       <Text style={{color:colors.muted, marginBottom:4}}>Глубина</Text>
       <View style={{flexDirection:'row',marginBottom:spacing.md}}>
         {(['light','standard','deep'] as DepthMode[]).map(d=> (
@@ -48,9 +56,9 @@ function Record({go,setDraft,setMood,setDepth}:{go:(s:string)=>void;setDraft:(t:
       </View>
       <Text style={{color:colors.muted, marginBottom:4}}>Сон</Text>
       <TextInput value={text} onChangeText={setText} placeholder='Опишите сон…' placeholderTextColor={colors.muted} multiline style={{minHeight:160,color:colors.text,backgroundColor:'rgba(255,255,255,0.04)',borderColor:'rgba(255,255,255,0.12)',borderWidth:1,padding:12,borderRadius:12}}/>
-      <View style={{flexDirection:'row',marginTop:spacing.md}}>
-        <TouchableOpacity onPress={()=>{setDraft(text);setMood(moodLocal);setDepth(depthLocal);go('insight');}} style={{backgroundColor:colors.iris,padding:10,borderRadius:12,marginRight:8}}><Text style={{color:'#fff'}}>Получить инсайт</Text></TouchableOpacity>
-        <TouchableOpacity style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,padding:10,borderRadius:12}}><Text style={{color:colors.text}}>Ритуал инкубации</Text></TouchableOpacity>
+      <View style={{flexDirection:'row',marginTop:spacing.md,flexWrap:'wrap'}}>
+        <TouchableOpacity onPress={()=>{setDraft(text);setMood(moodLocal);setDepth(depthLocal);go('insight');}} style={{backgroundColor:colors.iris,padding:10,borderRadius:12,marginRight:8,marginBottom:8}}><Text style={{color:'#fff'}}>Получить инсайт</Text></TouchableOpacity>
+        <TouchableOpacity onPress={save} style={{borderColor:'rgba(255,255,255,0.15)',borderWidth:1,padding:10,borderRadius:12,marginRight:8,marginBottom:8}}><Text style={{color:colors.text}}>Сохранить в дневник</Text></TouchableOpacity>
       </View>
     </ScrollView>
   );
