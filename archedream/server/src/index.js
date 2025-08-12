@@ -50,9 +50,16 @@ function heuristic(text){
   return {summary:'Гипотеза по сну', archetypes: top, symbols};
 }
 
-async function deepseekInsight({text, mood='спокойно', depth='standard', associations=[]}){
-  const system = 'Роль: юнгианский аналитик, бережный, не-директивный. Дай краткий бережный разбор без медицины. Форматируй как JSON.';
-  const user = { dream_text: text, mood, associations, depth, instructions: 'Верни JSON с полями: summary, archetypes[ {name, evidence[]} ], symbols[ {span,label} ], questions[3-5], practice{title,steps[],duration_min}, safety_notes[]. Максимум 3 архетипа.' };
+async function deepseekInsight({text, mood='спокойно', depth='deep', associations=[]}){
+  const system = [
+    'Ты — опытный юнгианский аналитик (2025), бережный и не-директивный.',
+    'Говори по-русски, короткими абзацами. Избегай медицинских диагнозов и категоричности.',
+    'Опирайся на архетипы Юнга, Тень, Аниму/Анимус и Самость; приоритет — личный контекст.',
+    'Верни JSON (строго) со структурой: summary, myth_arc, archetypes[ {name, evidence[]} ],',
+    'symbols[ {span,label} ], questions[3-5], practice{title,steps[],duration_min}, safety_notes[].',
+    'Максимум 3 архетипа, практика 5–10 минут, тон — бережный.'
+  ].join(' ');
+  const user = { dream_text: text, mood, associations, depth };
   const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
     body: JSON.stringify({ model: DEEPSEEK_MODEL, messages: [ { role:'system', content: system }, { role:'user', content: JSON.stringify(user) } ], temperature: 0.3, response_format: { type: 'json_object' } })
@@ -64,17 +71,50 @@ async function deepseekInsight({text, mood='спокойно', depth='standard',
   return parsed;
 }
 
+async function deepseekTranscribeFromBuffer(buffer, filename='audio.m4a'){
+  if(!DEEPSEEK_API_KEY) throw new Error('NO_KEY');
+  const form = new FormData();
+  form.append('file', new Blob([buffer]), filename);
+  form.append('model', DEEPSEEK_ASR_MODEL);
+  const resp = await fetch('https://api.deepseek.com/v1/audio/transcriptions', { method: 'POST', headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` }, body: form });
+  if(!resp.ok){ const t = await resp.text(); throw new Error(`DeepSeek ASR error ${resp.status}: ${t}`); }
+  const data = await resp.json();
+  return data.text || data.transcription || '';
+}
+
+app.post('/insights', async (req,res)=>{
+  const { text, mood='спокойно', depth='deep', associations=[] } = req.body || {};
+  if(!text) return res.status(400).json({error:'text required'});
+  try{
+    if(DEEPSEEK_API_KEY){ const out = await deepseekInsight({text, mood, depth, associations}); return res.json(out); }
+    return res.json(heuristic(text));
+  }catch(err){ console.error(err); return res.json(heuristic(text)); }
+});
+
+app.post('/transcribe', upload.single('audio'), async (req,res)=>{
+  try{
+    if(!DEEPSEEK_API_KEY){ return res.status(400).json({error:'DEEPSEEK_API_KEY required for transcription'}); }
+    if(!req.file){ return res.status(400).json({error:'audio file is required (field: audio)'}); }
+    const text = await deepseekTranscribeFromBuffer(req.file.buffer, req.file.originalname || 'audio.m4a');
+    return res.json({ text });
+  }catch(e){ console.error(e); return res.status(500).json({error:'transcription_failed', detail: String(e)}); }
+});
+
+function formatInsightHTML(out){
+  const arch = (out.archetypes||[]).map(a=>a.name||a).join(', ');
+  const questions = Array.isArray(out.questions)? out.questions.map(x=>`• ${x}`).join('<br/>'):'';
+  const practice = out.practice ? `<b>Практика:</b> ${out.practice.title||''}<br/>${(out.practice.steps||[]).map((s,i)=>`${i+1}) ${s}`).join('<br/>')}` : '';
+  const myth = out.myth_arc? `<b>Мифо‑арка:</b> ${out.myth_arc}<br/>` : '';
+  const safe = Array.isArray(out.safety_notes)? `<br/><i>${out.safety_notes.join(' ')}</i>` : '';
+  const disc = '<br/><i>Не медицинский совет. Берегите себя.</i>';
+  return `<b>Архетипы:</b> ${arch||'—'}<br/><b>Кратко:</b> ${out.summary||'—'}<br/>${myth}${questions}<br/>${practice}${safe}${disc}`;
+}
+
 async function insightTextResponse(text){
   try{
-    if(DEEPSEEK_API_KEY){
-      const out = await deepseekInsight({ text, mood:'спокойно', depth:'standard', associations:[] });
-      const arch = (out.archetypes||[]).map(a=>a.name||a).join(', ');
-      const q = Array.isArray(out.questions)? out.questions.map(x=>`• ${x}`).join('\n'):'';
-      const pr = out.practice? `Практика: ${out.practice.title||''}\n${(out.practice.steps||[]).map((s,i)=>`${i+1}) ${s}`).join('\n')}`:'';
-      return `Архетипы: ${arch||'—'}\nКратко: ${out.summary||'—'}\n${q}\n${pr}`.trim();
-    }
+    if(DEEPSEEK_API_KEY){ const out = await deepseekInsight({ text, mood:'спокойно', depth:'deep', associations:[] }); return formatInsightHTML(out); }
     const h = heuristic(text);
-    return `Архетипы (эвристика): ${(h.archetypes||[]).join(', ')||'—'}\nПочему: ${(h.symbols||[]).map(s=>`${s.span}→${s.label}`).join(', ')}`;
+    return `<b>Архетипы (эвристика):</b> ${(h.archetypes||[]).join(', ')||'—'}<br/><b>Почему:</b> ${(h.symbols||[]).map(s=>`${s.span}→${s.label}`).join(', ')}`;
   }catch(e){ return 'Не удалось получить инсайт сейчас.'; }
 }
 
@@ -87,40 +127,33 @@ async function startTelegram(){
       const updates = await bot.getUpdates();
       for(const u of updates){
         bot.offset = u.update_id;
-        const msg = u.message; if(!msg || !msg.text) continue;
-        const chatId = msg.chat.id; const text = msg.text.trim();
-        if(text.startsWith('/start')){ await bot.sendMessage(chatId, 'Пришлите текст сна, я отвечу коротким инсайтом.'); continue; }
-        const reply = await insightTextResponse(text);
-        await bot.sendMessage(chatId, reply);
+        const msg = u.message; if(!msg) continue;
+        const chatId = msg.chat.id;
+        if(msg.text){
+          const text = msg.text.trim();
+          if(text.startsWith('/start')){ await bot.sendMessage(chatId, 'Пришлите текст или голосовое. Я отвечу бережным юнгианским инсайтом.', 'HTML'); continue; }
+          const reply = await insightTextResponse(text);
+          await bot.sendMessage(chatId, reply, 'HTML');
+        } else if(msg.voice || msg.audio){
+          const fileId = (msg.voice||msg.audio).file_id;
+          // getFile
+          const base = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+          const gf = await fetch(`${base}/getFile?file_id=${fileId}`).then(r=>r.json());
+          const path = gf.result?.file_path; if(!path){ await bot.sendMessage(chatId,'Не удалось скачать аудио.'); continue; }
+          const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${path}`;
+          const buf = await fetch(fileUrl).then(r=>r.arrayBuffer()).then(b=>Buffer.from(b));
+          let text='';
+          try{ text = await deepseekTranscribeFromBuffer(buf, 'voice.ogg'); }catch{ await bot.sendMessage(chatId,'Не удалось распознать аудио.'); continue; }
+          const reply = await insightTextResponse(text);
+          await bot.sendMessage(chatId, `<b>Расшифровка:</b> ${text}`, 'HTML');
+          await bot.sendMessage(chatId, reply, 'HTML');
+        }
       }
     }catch{ /* silent retry */ }
   }
 }
 
 startTelegram();
-
-app.post('/insights', async (req,res)=>{
-  const { text, mood='спокойно', depth='standard', associations=[] } = req.body || {};
-  if(!text) return res.status(400).json({error:'text required'});
-  try{
-    if(DEEPSEEK_API_KEY){ const out = await deepseekInsight({text, mood, depth, associations}); return res.json(out); }
-    return res.json(heuristic(text));
-  }catch(err){ console.error(err); return res.json(heuristic(text)); }
-});
-
-app.post('/transcribe', upload.single('audio'), async (req,res)=>{
-  try{
-    if(!DEEPSEEK_API_KEY){ return res.status(400).json({error:'DEEPSEEK_API_KEY required for transcription'}); }
-    if(!req.file){ return res.status(400).json({error:'audio file is required (field: audio)'}); }
-    const form = new FormData();
-    form.append('file', new Blob([req.file.buffer]), req.file.originalname || 'audio.m4a');
-    form.append('model', DEEPSEEK_ASR_MODEL);
-    const resp = await fetch('https://api.deepseek.com/v1/audio/transcriptions', { method: 'POST', headers: { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` }, body: form });
-    if(!resp.ok){ const t = await resp.text(); throw new Error(`DeepSeek ASR error ${resp.status}: ${t}`); }
-    const data = await resp.json();
-    return res.json({ text: data.text || data.transcription || '' });
-  }catch(e){ console.error(e); return res.status(500).json({error:'transcription_failed', detail: String(e)}); }
-});
 
 const port = process.env.PORT || 4000;
 app.listen(port, ()=>console.log('API on '+port));
