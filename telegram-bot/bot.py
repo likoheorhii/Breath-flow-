@@ -13,13 +13,21 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "").strip()
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-reasoner").strip()
 DEEPSEEK_ASR_MODEL = os.getenv("DEEPSEEK_ASR_MODEL", "whisper-1").strip()
 API_BASE = "https://api.deepseek.com/v1"
+
+# Gemini config
+LLM_PROVIDER = (os.getenv("LLM_PROVIDER", "deepseek").strip().lower() or "deepseek")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-pro").strip()
+
 REPL_URL = os.getenv("REPL_URL", "").strip()
 PORT = int(os.getenv("PORT", "8080"))
 
 if not BOT_TOKEN:
     logger.warning("BOT_TOKEN is not set")
-if not DEEPSEEK_API_KEY:
-    logger.warning("DEEPSEEK_API_KEY is not set; insights/transcription disabled")
+if LLM_PROVIDER == "deepseek" and not DEEPSEEK_API_KEY:
+    logger.warning("DEEPSEEK_API_KEY is not set; insights/transcription disabled for DeepSeek provider")
+if LLM_PROVIDER == "gemini" and not GOOGLE_API_KEY:
+    logger.warning("GOOGLE_API_KEY is not set; insights disabled for Gemini provider")
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
@@ -57,7 +65,8 @@ def setup_bot_profile():
             c.post(f"{base}/setMyCommands", json={"commands":[
                 {"command":"start","description":"Начать и увидеть меню"},
                 {"command":"help","description":"Как получить разбор"},
-                {"command":"practice","description":"Практика дня (10 минут)"}
+                {"command":"practice","description":"Практика дня (10 минут)"},
+                {"command":"diag","description":"Диагностика бота"}
             ]})
     except Exception:
         logger.warning("Could not set bot profile", exc_info=True)
@@ -73,7 +82,7 @@ SYSTEM_PROMPT = (
 
 HELP_TEXT = (
     "Пришлите текст или голосовое сообщение сна — я верну архетипы, вопросы и мягкую практику.\n"
-    "Команды: /start, /help, /practice"
+    "Команды: /start, /help, /practice, /diag"
 )
 PRACTICE_OF_DAY = (
     "Практика дня: 10 вдохов доверия. На выдохе — фраза: ‘Я рядом с собой’."
@@ -105,7 +114,7 @@ def tele_keyboard():
     kb.row(types.KeyboardButton("Практика дня"))
     return kb
 
-# DeepSeek calls
+# DeepSeek and Gemini providers
 
 def heuristic_insight() -> Dict[str, Any]:
     return {
@@ -132,8 +141,6 @@ def deepseek_insight(text: str, mood: str = "спокойно", depth: str = "de
             {"role": "user", "content": json.dumps({"dream_text": text, "mood": mood, "depth": depth, "associations": []}, ensure_ascii=False)},
         ],
         "temperature": 0.3,
-        # Some DeepSeek deployments may not support response_format; rely on prompting instead
-        # "response_format": {"type": "json_object"},
     }
     headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
     try:
@@ -145,7 +152,6 @@ def deepseek_insight(text: str, mood: str = "спокойно", depth: str = "de
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
-                # Try to salvage JSON substring if any
                 try:
                     start = content.find("{")
                     end = content.rfind("}")
@@ -161,7 +167,41 @@ def deepseek_insight(text: str, mood: str = "спокойно", depth: str = "de
         logger.exception("DeepSeek request failed")
         return heuristic_insight()
 
+def gemini_insight(text: str, mood: str = "спокойно", depth: str = "deep") -> Dict[str, Any]:
+    if not GOOGLE_API_KEY:
+        return heuristic_insight()
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GOOGLE_API_KEY)
+        model = genai.GenerativeModel(model_name=GEMINI_MODEL, system_instruction=SYSTEM_PROMPT)
+        resp = model.generate_content(
+            json.dumps({"dream_text": text, "mood": mood, "depth": depth, "associations": []}, ensure_ascii=False),
+            generation_config={"response_mime_type": "application/json"},
+        )
+        content = resp.text or "{}"
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            try:
+                start = content.find("{")
+                end = content.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    return json.loads(content[start:end+1])
+            except Exception:
+                pass
+            return {"summary": content}
+    except Exception:
+        logger.exception("Gemini request failed")
+        return heuristic_insight()
+
+def get_insight(text: str, mood: str = "спокойно", depth: str = "deep") -> Dict[str, Any]:
+    provider = LLM_PROVIDER
+    if provider == "gemini":
+        return gemini_insight(text, mood, depth)
+    return deepseek_insight(text, mood, depth)
+
 def deepseek_transcribe(voice_bytes: bytes, filename: str = "voice.ogg") -> str:
+    # Keep ASR via DeepSeek unless replaced separately
     if not DEEPSEEK_API_KEY:
         return ""
     headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}
@@ -194,13 +234,15 @@ def practice_cmd(m: telebot.types.Message):
 
 @bot.message_handler(commands=["diag"]) 
 def diag_cmd(m: telebot.types.Message):
-    has_key = bool(DEEPSEEK_API_KEY)
+    provider = LLM_PROVIDER
+    has_key = (provider == "gemini" and bool(GOOGLE_API_KEY)) or (provider == "deepseek" and bool(DEEPSEEK_API_KEY))
+    ok = False
     try:
-        test = deepseek_insight("Проверка связи")
+        test = get_insight("Проверка связи")
         ok = "summary" in test
     except Exception:
         ok = False
-    bot.send_message(m.chat.id, f"diag: key={'yes' if has_key else 'no'}, model={DEEPSEEK_MODEL}, ok={'yes' if ok else 'no'}")
+    bot.send_message(m.chat.id, f"diag: provider={provider}, key={'yes' if has_key else 'no'}, model={GEMINI_MODEL if provider=='gemini' else DEEPSEEK_MODEL}, ok={'yes' if ok else 'no'}")
 
 @bot.message_handler(content_types=["voice", "audio"]) 
 def handle_voice(m: telebot.types.Message):
@@ -213,7 +255,7 @@ def handle_voice(m: telebot.types.Message):
         text = deepseek_transcribe(voice_bytes, filename=(file_info.file_path or "voice.ogg").split("/")[-1])
         if text:
             bot.send_message(m.chat.id, f"<b>Расшифровка:</b> {text}")
-        out = deepseek_insight(text or "")
+        out = get_insight(text or "")
         bot.send_message(m.chat.id, format_insight_html(out))
     except Exception as e:
         logger.exception("voice error")
@@ -229,7 +271,7 @@ def handle_text(m: telebot.types.Message):
         practice_cmd(m)
         return
     try:
-        out = deepseek_insight(text)
+        out = get_insight(text)
         bot.send_message(m.chat.id, format_insight_html(out))
     except Exception:
         logger.exception("insight error")
