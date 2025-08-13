@@ -107,21 +107,24 @@ def tele_keyboard():
 
 # DeepSeek calls
 
+def heuristic_insight() -> Dict[str, Any]:
+    return {
+        "summary": "Краткий эвристический разбор (без LLM)",
+        "myth_arc": None,
+        "archetypes": [],
+        "symbols": [],
+        "questions": [
+            "Что было ядром переживания во сне?",
+            "Как этот образ связан с вашей реальной ситуацией?",
+            "Какая часть вас ‘говорит’ через этот сон?",
+        ],
+        "practice": {"title": "Три дыхания внимания", "steps": ["Вдох — замечаю тело", "Выдох — мягко к переживанию", "Повторить 3 раза"], "duration_min": 5},
+        "safety_notes": ["Инсайт не является мед. советом"],
+    }
+
 def deepseek_insight(text: str, mood: str = "спокойно", depth: str = "deep") -> Dict[str, Any]:
     if not DEEPSEEK_API_KEY:
-        return {
-            "summary": "Краткий эвристический разбор (без LLM)",
-            "myth_arc": None,
-            "archetypes": [],
-            "symbols": [],
-            "questions": [
-                "Что было ядром переживания во сне?",
-                "Как этот образ связан с вашей реальной ситуацией?",
-                "Какая часть вас ‘говорит’ через этот сон?",
-            ],
-            "practice": {"title": "Три дыхания внимания", "steps": ["Вдох — замечаю тело", "Выдох — мягко к переживанию", "Повторить 3 раза"], "duration_min": 5},
-            "safety_notes": ["Инсайт не является мед. советом"],
-        }
+        return heuristic_insight()
     payload = {
         "model": DEEPSEEK_MODEL,
         "messages": [
@@ -129,18 +132,34 @@ def deepseek_insight(text: str, mood: str = "спокойно", depth: str = "de
             {"role": "user", "content": json.dumps({"dream_text": text, "mood": mood, "depth": depth, "associations": []}, ensure_ascii=False)},
         ],
         "temperature": 0.3,
-        "response_format": {"type": "json_object"},
+        # Some DeepSeek deployments may not support response_format; rely on prompting instead
+        # "response_format": {"type": "json_object"},
     }
     headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
-    with httpx.Client(timeout=60) as client:
-        r = client.post(f"{API_BASE}/chat/completions", headers=headers, json=payload)
-        r.raise_for_status()
-        data = r.json()
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            return {"summary": content}
+    try:
+        with httpx.Client(timeout=60) as client:
+            r = client.post(f"{API_BASE}/chat/completions", headers=headers, json=payload)
+            r.raise_for_status()
+            data = r.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                # Try to salvage JSON substring if any
+                try:
+                    start = content.find("{")
+                    end = content.rfind("}")
+                    if start != -1 and end != -1 and end > start:
+                        return json.loads(content[start:end+1])
+                except Exception:
+                    pass
+                return {"summary": content}
+    except httpx.HTTPStatusError as e:
+        logger.error("DeepSeek HTTP error %s: %s", e.response.status_code if e.response else "?", e.response.text if e.response else "")
+        return heuristic_insight()
+    except Exception as e:
+        logger.exception("DeepSeek request failed")
+        return heuristic_insight()
 
 def deepseek_transcribe(voice_bytes: bytes, filename: str = "voice.ogg") -> str:
     if not DEEPSEEK_API_KEY:
@@ -150,11 +169,15 @@ def deepseek_transcribe(voice_bytes: bytes, filename: str = "voice.ogg") -> str:
         "file": (filename, voice_bytes, "application/octet-stream"),
         "model": (None, DEEPSEEK_ASR_MODEL),
     }
-    with httpx.Client(timeout=120) as client:
-        r = client.post(f"{API_BASE}/audio/transcriptions", headers=headers, files=files)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("text") or data.get("transcription") or ""
+    try:
+        with httpx.Client(timeout=120) as client:
+            r = client.post(f"{API_BASE}/audio/transcriptions", headers=headers, files=files)
+            r.raise_for_status()
+            data = r.json()
+            return data.get("text") or data.get("transcription") or ""
+    except Exception:
+        logger.exception("ASR failed")
+        return ""
 
 # Handlers
 @bot.message_handler(commands=["start"]) 
@@ -168,6 +191,16 @@ def help_cmd(m: telebot.types.Message):
 @bot.message_handler(commands=["practice"]) 
 def practice_cmd(m: telebot.types.Message):
     bot.send_message(m.chat.id, PRACTICE_OF_DAY)
+
+@bot.message_handler(commands=["diag"]) 
+def diag_cmd(m: telebot.types.Message):
+    has_key = bool(DEEPSEEK_API_KEY)
+    try:
+        test = deepseek_insight("Проверка связи")
+        ok = "summary" in test
+    except Exception:
+        ok = False
+    bot.send_message(m.chat.id, f"diag: key={'yes' if has_key else 'no'}, model={DEEPSEEK_MODEL}, ok={'yes' if ok else 'no'}")
 
 @bot.message_handler(content_types=["voice", "audio"]) 
 def handle_voice(m: telebot.types.Message):
