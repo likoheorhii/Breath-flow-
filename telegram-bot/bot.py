@@ -1,4 +1,4 @@
-import os, json, time, threading, logging
+import os, json, time, threading, logging, base64
 from typing import Any, Dict
 import httpx
 from flask import Flask
@@ -200,8 +200,37 @@ def get_insight(text: str, mood: str = "спокойно", depth: str = "deep") 
         return gemini_insight(text, mood, depth)
     return deepseek_insight(text, mood, depth)
 
+# MIME helper
+
+def guess_mime(filename: str) -> str:
+    name = (filename or "").lower()
+    if name.endswith(".ogg") or name.endswith(".oga"): return "audio/ogg"
+    if name.endswith(".mp3"): return "audio/mpeg"
+    if name.endswith(".m4a"): return "audio/mp4"
+    if name.endswith(".webm"): return "audio/webm"
+    if name.endswith(".wav"): return "audio/wav"
+    return "application/octet-stream"
+
+def gemini_transcribe(voice_bytes: bytes, filename: str) -> str:
+    if not GOOGLE_API_KEY:
+        return ""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GOOGLE_API_KEY)
+        model = genai.GenerativeModel(model_name=GEMINI_MODEL)
+        mime = guess_mime(filename)
+        b64 = base64.b64encode(voice_bytes).decode("utf-8")
+        prompt = "Расшифруй аудиозапись по-русски. Верни только текст без пояснений."
+        resp = model.generate_content([
+            {"text": prompt},
+            {"inline_data": {"mime_type": mime, "data": b64}},
+        ], generation_config={"response_mime_type": "text/plain"})
+        return (resp.text or "").strip()
+    except Exception:
+        logger.exception("Gemini ASR failed")
+        return ""
+
 def deepseek_transcribe(voice_bytes: bytes, filename: str = "voice.ogg") -> str:
-    # Keep ASR via DeepSeek unless replaced separately
     if not DEEPSEEK_API_KEY:
         return ""
     headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}
@@ -218,6 +247,9 @@ def deepseek_transcribe(voice_bytes: bytes, filename: str = "voice.ogg") -> str:
     except Exception:
         logger.exception("ASR failed")
         return ""
+
+def transcribe_audio(voice_bytes: bytes, filename: str) -> str:
+    return gemini_transcribe(voice_bytes, filename) if LLM_PROVIDER == "gemini" else deepseek_transcribe(voice_bytes, filename)
 
 # Handlers
 @bot.message_handler(commands=["start"]) 
@@ -252,7 +284,7 @@ def handle_voice(m: telebot.types.Message):
         file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
         with httpx.Client(timeout=120) as c:
             voice_bytes = c.get(file_url).content
-        text = deepseek_transcribe(voice_bytes, filename=(file_info.file_path or "voice.ogg").split("/")[-1])
+        text = transcribe_audio(voice_bytes, filename=(file_info.file_path or "voice.ogg").split("/")[-1])
         if text:
             bot.send_message(m.chat.id, f"<b>Расшифровка:</b> {text}")
         out = get_insight(text or "")
